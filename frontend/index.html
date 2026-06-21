@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>个人学习打卡系统</title>
+  <style>
+    /* ===== 全局样式 ===== */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #333;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    /* ===== 登录/注册页面 ===== */
+    #login-page {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .auth-container {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+      padding: 40px;
+      width: 380px;
+    }
+    .auth-title {
+      text-align: center;
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: #333;
+    }
+    .auth-subtitle {
+      text-align: center;
+      font-size: 14px;
+      color: #999;
+      margin-bottom: 24px;
+    }
+    .auth-tabs {
+      display: flex;
+      border-bottom: 2px solid #eee;
+      margin-bottom: 24px;
+    }
+    .auth-tab {
+      flex: 1;
+      text-align: center;
+      padding: 12px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 500;
+      color: #999;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: all 0.2s;
+    }
+    .auth-tab.active {
+      color: #667eea;
+      border-bottom-color: #667eea;
+    }
+    .auth-form {
+      display: none;
+    }
+    .auth-form.active {
+      display: block;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: #555;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: border-color 0.2s;
+      outline: none;
+    }
+    .form-group input:focus {
+      border-color: #667eea;
+    }
+    .btn {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: #fff;
+    }
+    .btn-primary:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+    .btn-checkin {
+      background: linear-gradient(135deg, #11998e, #38ef7d);
+      color: #fff;
+      width: auto;
+      padding: 14px 40px;
+      font-size: 18px;
+      border-radius: 12px;
+    }
+    .btn-checkin:hover {
+      opacity: 0.9;
+      transform: translateY(-1px);
+    }
+    .btn-checkin.checked {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .btn-checkin.checked:hover {
+      opacity: 1;
+      transform: none;
+    }
+    .btn-sm {
+      padding: 6px 14px;
+      font-size: 13px;
+      border-radius: 6px;
+      width: auto;
+    }
+    .btn-danger {
+      background: #ff4757;
+      color: #fff;
+    }
+    .btn-danger:hover {
+      background: #e8414f;
+    }
+    .btn-logout {
+      background: transparent;
+      color: #667eea;
+      border: 1px solid #667eea;
+      width: auto;
+      padding: 6px 16px;
+      font-size: 13px;
+    }
+    .btn-logout:hover {
+      background: #667eea;
+      color: #fff;
+    }
+    .auth-footer {
+      text-align: center;
+      margin-top: 16px;
+      font-size: 13px;
+      color: #999;
+    }
+
+    /* ===== 主页面 ===== */
+    #main-page {
+      display: none;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #fff;
+      padding: 16px 24px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+      margin-bottom: 20px;
+    }
+    .header-username {
+      font-size: 18px;
+      font-weight: 600;
+      color: #333;
+    }
+    .header-greeting {
+      font-size: 14px;
+      color: #999;
+      margin-right: 12px;
+    }
+
+    /* ===== 统计看板 ===== */
+    .dashboard {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .stat-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 18px;
+      text-align: center;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+    .stat-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: #667eea;
+      margin-bottom: 4px;
+    }
+    .stat-value.checked-yes {
+      color: #38ef7d;
+    }
+    .stat-value.checked-no {
+      color: #ccc;
+    }
+    .stat-label {
+      font-size: 13px;
+      color: #999;
+    }
+
+    /* ===== 打卡区域 ===== */
+    .checkin-section {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    /* ===== 任务输入区域 ===== */
+    .task-input-area {
+      background: #fff;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+      margin-bottom: 16px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: flex-end;
+    }
+    .task-input-area .form-group {
+      margin-bottom: 0;
+      flex: 1;
+      min-width: 150px;
+    }
+    .task-input-area .form-group input,
+    .task-input-area .form-group select {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+    }
+    .task-input-area .form-group input:focus,
+    .task-input-area .form-group select:focus {
+      border-color: #667eea;
+    }
+    .task-input-area .btn {
+      height: 42px;
+      white-space: nowrap;
+    }
+
+    /* ===== 筛选按钮 ===== */
+    .task-filters {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .filter-btn {
+      padding: 8px 20px;
+      border: 1px solid #ddd;
+      background: #fff;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    .filter-btn:hover {
+      border-color: #667eea;
+      color: #667eea;
+    }
+    .filter-btn.active {
+      background: #667eea;
+      color: #fff;
+      border-color: #667eea;
+    }
+
+    /* ===== 任务列表 ===== */
+    .task-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .task-item {
+      background: #fff;
+      padding: 16px 20px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      transition: all 0.2s;
+    }
+    .task-item:hover {
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+    .task-item.completed .task-title {
+      text-decoration: line-through;
+      color: #ccc;
+    }
+    .task-check-btn {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: 2px solid #ddd;
+      background: #fff;
+      cursor: pointer;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: transparent;
+      transition: all 0.2s;
+    }
+    .task-check-btn.checked {
+      background: #38ef7d;
+      border-color: #38ef7d;
+      color: #fff;
+    }
+    .task-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .task-title {
+      font-size: 15px;
+      font-weight: 500;
+      margin-bottom: 4px;
+      word-break: break-word;
+    }
+    .task-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .task-category-badge {
+      font-size: 12px;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-weight: 500;
+    }
+    .badge-work {
+      background: #e3f2fd;
+      color: #1976d2;
+    }
+    .badge-study {
+      background: #f3e5f5;
+      color: #7b1fa2;
+    }
+    .badge-life {
+      background: #e8f5e9;
+      color: #388e3c;
+    }
+    .task-due-date {
+      font-size: 12px;
+      color: #999;
+    }
+    .task-delete-btn {
+      padding: 6px 14px;
+      border: none;
+      border-radius: 6px;
+      background: #ff4757;
+      color: #fff;
+      cursor: pointer;
+      font-size: 13px;
+      flex-shrink: 0;
+      transition: background 0.2s;
+    }
+    .task-delete-btn:hover {
+      background: #e8414f;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: #ccc;
+      font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ===== 登录/注册页面 ===== -->
+  <div id="login-page">
+    <div class="auth-container">
+      <div class="auth-title">📝 个人学习打卡系统</div>
+      <div class="auth-subtitle">记录任务，坚持打卡，遇见更好的自己</div>
+
+      <div class="auth-tabs">
+        <div class="auth-tab active" data-tab="login">登录</div>
+        <div class="auth-tab" data-tab="register">注册</div>
+      </div>
+
+      <!-- 登录表单 -->
+      <form id="login-form" class="auth-form active">
+        <div class="form-group">
+          <label>用户名</label>
+          <input type="text" id="login-username" placeholder="请输入用户名" />
+        </div>
+        <div class="form-group">
+          <label>密码</label>
+          <input type="password" id="login-password" placeholder="请输入密码" />
+        </div>
+        <button type="submit" class="btn btn-primary">登 录</button>
+      </form>
+
+      <!-- 注册表单 -->
+      <form id="register-form" class="auth-form">
+        <div class="form-group">
+          <label>用户名</label>
+          <input type="text" id="register-username" placeholder="请输入用户名" />
+        </div>
+        <div class="form-group">
+          <label>密码</label>
+          <input type="password" id="register-password" placeholder="请输入密码" />
+        </div>
+        <button type="submit" class="btn btn-primary">注 册</button>
+      </form>
+
+      <div class="auth-footer">开始记录你的学习之旅吧！</div>
+    </div>
+  </div>
+
+  <!-- ===== 主页面 ===== -->
+  <div id="main-page">
+    <div class="container">
+
+      <!-- 顶部栏 -->
+      <div class="header">
+        <div>
+          <span class="header-greeting">👋 你好，</span>
+          <span class="header-username" id="header-username"></span>
+        </div>
+        <button class="btn btn-logout" id="logout-btn">退出登录</button>
+      </div>
+
+      <!-- 统计看板 -->
+      <div class="dashboard">
+        <div class="stat-card">
+          <div class="stat-value" id="stat-total">0</div>
+          <div class="stat-label">总任务数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-completed">0</div>
+          <div class="stat-label">已完成数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-checkin">--</div>
+          <div class="stat-label">今日打卡</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-weekly">0</div>
+          <div class="stat-label">本周打卡次数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-streak">0</div>
+          <div class="stat-label">最长连续打卡</div>
+        </div>
+      </div>
+
+      <!-- 打卡按钮 -->
+      <div class="checkin-section">
+        <button class="btn btn-checkin" id="checkin-btn">📅 今日打卡</button>
+      </div>
+
+      <!-- 任务输入 -->
+      <div class="task-input-area">
+        <div class="form-group">
+          <input type="text" id="task-title" placeholder="输入任务标题" />
+        </div>
+        <div class="form-group">
+          <select id="task-category">
+            <option value="work">💼 工作</option>
+            <option value="study">📚 学习</option>
+            <option value="life">🏠 生活</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <input type="date" id="task-due-date" />
+        </div>
+        <button class="btn btn-primary" id="add-task-btn">➕ 添加</button>
+      </div>
+
+      <!-- 筛选按钮 -->
+      <div class="task-filters">
+        <button class="filter-btn active" data-category="all">全部</button>
+        <button class="filter-btn" data-category="work">💼 工作</button>
+        <button class="filter-btn" data-category="study">📚 学习</button>
+        <button class="filter-btn" data-category="life">🏠 生活</button>
+      </div>
+
+      <!-- 任务列表 -->
+      <div class="task-list" id="task-list"></div>
+
+    </div>
+  </div>
+
+  <script>
+    // ===== 全局配置 =====
+    const BASE_URL = '/api'
+
+    // ===== 全局状态 =====
+    let currentUser = null
+    let currentFilter = 'all'
+
+    // ===== DOM 元素 =====
+    const loginPage = document.getElementById('login-page')
+    const mainPage = document.getElementById('main-page')
+    const loginForm = document.getElementById('login-form')
+    const registerForm = document.getElementById('register-form')
+    const authTabs = document.querySelectorAll('.auth-tab')
+    const headerUsername = document.getElementById('header-username')
+    const logoutBtn = document.getElementById('logout-btn')
+    const checkinBtn = document.getElementById('checkin-btn')
+    const taskTitleInput = document.getElementById('task-title')
+    const taskCategorySelect = document.getElementById('task-category')
+    const taskDueDateInput = document.getElementById('task-due-date')
+    const addTaskBtn = document.getElementById('add-task-btn')
+    const taskListEl = document.getElementById('task-list')
+    const filterBtns = document.querySelectorAll('.filter-btn')
+
+    // ===== 页面初始化 =====
+    function init() {
+      // 检查 localStorage 是否有登录信息
+      const savedUserId = localStorage.getItem('user_id')
+      const savedUsername = localStorage.getItem('username')
+
+      if (savedUserId && savedUsername) {
+        currentUser = { id: savedUserId, username: savedUsername }
+        showMainPage()
+      } else {
+        showLoginPage()
+      }
+    }
+
+    // ===== 页面切换 =====
+    function showLoginPage() {
+      loginPage.style.display = 'flex'
+      mainPage.style.display = 'none'
+    }
+
+    function showMainPage() {
+      loginPage.style.display = 'none'
+      mainPage.style.display = 'block'
+      headerUsername.textContent = currentUser.username
+      loadTasks()
+      loadStats()
+      updateCheckinBtn()
+    }
+
+    // ===== 认证 tab 切换 =====
+    authTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        authTabs.forEach(t => t.classList.remove('active'))
+        tab.classList.add('active')
+        const targetTab = tab.dataset.tab
+        loginForm.classList.remove('active')
+        registerForm.classList.remove('active')
+        if (targetTab === 'login') {
+          loginForm.classList.add('active')
+        } else {
+          registerForm.classList.add('active')
+        }
+      })
+    })
+
+    // ===== 登录 =====
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault()
+      const username = document.getElementById('login-username').value.trim()
+      const password = document.getElementById('login-password').value.trim()
+
+      if (!username || !password) {
+        alert('请输入用户名和密码')
+        return
+      }
+
+      try {
+        const res = await fetch(`${BASE_URL}/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        })
+        const json = await res.json()
+        if (!json.success) {
+          alert(json.message)
+          return
+        }
+        currentUser = json.data.user
+        localStorage.setItem('user_id', currentUser.id)
+        localStorage.setItem('username', currentUser.username)
+        showMainPage()
+      } catch (error) {
+        alert('网络请求失败')
+      }
+    })
+
+    // ===== 注册 =====
+    registerForm.addEventListener('submit', async (e) => {
+      e.preventDefault()
+      const username = document.getElementById('register-username').value.trim()
+      const password = document.getElementById('register-password').value.trim()
+
+      if (!username || !password) {
+        alert('请输入用户名和密码')
+        return
+      }
+
+      try {
+        const res = await fetch(`${BASE_URL}/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        })
+        const json = await res.json()
+        if (!json.success) {
+          alert(json.message)
+          return
+        }
+        alert('注册成功，请登录')
+        // 切换到登录 tab
+        authTabs[0].click()
+        document.getElementById('login-username').value = username
+      } catch (error) {
+        alert('网络请求失败')
+      }
+    })
+
+    // ===== 退出登录 =====
+    logoutBtn.addEventListener('click', () => {
+      localStorage.removeItem('user_id')
+      localStorage.removeItem('username')
+      currentUser = null
+      showLoginPage()
+      // 清空表单
+      document.getElementById('login-username').value = ''
+      document.getElementById('login-password').value = ''
+    })
+
+    // ===== 加载任务列表 =====
+    async function loadTasks() {
+      if (!currentUser) return
+
+      try {
+        const url = currentFilter === 'all'
+          ? `${BASE_URL}/tasks?user_id=${currentUser.id}`
+          : `${BASE_URL}/tasks?user_id=${currentUser.id}&category=${currentFilter}`
+
+        const res = await fetch(url)
+        const json = await res.json()
+        if (!json.success) {
+          alert(json.message)
+          return
+        }
+
+        renderTaskList(json.data.tasks)
+      } catch (error) {
+        alert('加载任务列表失败')
+      }
+    }
+
+    // ===== 渲染任务列表 =====
+    function renderTaskList(tasks) {
+      if (!tasks || tasks.length === 0) {
+        taskListEl.innerHTML = '<div class="empty-state">暂无任务，快来添加一个吧！</div>'
+        return
+      }
+
+      taskListEl.innerHTML = tasks.map(task => {
+        const categoryMap = {
+          work: { label: '💼 工作', class: 'badge-work' },
+          study: { label: '📚 学习', class: 'badge-study' },
+          life: { label: '🏠 生活', class: 'badge-life' }
+        }
+        const cat = categoryMap[task.category] || categoryMap.work
+        const dueDate = task.due_date ? `截止：${task.due_date}` : ''
+        const completedClass = task.completed ? 'completed' : ''
+        const checkClass = task.completed ? 'checked' : ''
+
+        return `
+          <div class="task-item ${completedClass}">
+            <button class="task-check-btn ${checkClass}" data-id="${task.id}" onclick="toggleTask(${task.id}, ${task.completed})">
+              ${task.completed ? '✓' : ''}
+            </button>
+            <div class="task-info">
+              <div class="task-title">${escapeHtml(task.title)}</div>
+              <div class="task-meta">
+                <span class="task-category-badge ${cat.class}">${cat.label}</span>
+                ${dueDate ? `<span class="task-due-date">${dueDate}</span>` : ''}
+              </div>
+            </div>
+            <button class="task-delete-btn" data-id="${task.id}" onclick="deleteTask(${task.id})">删除</button>
+          </div>
+        `
+      }).join('')
+    }
+
+    // ===== HTML 转义防止 XSS =====
+    function escapeHtml(str) {
+      const div = document.createElement('div')
+      div.textContent = str
+      return div.innerHTML
+    }
+
+    // ===== 添加任务 =====
+    addTaskBtn.addEventListener('click', async () => {
+      if (!currentUser) return
+
+      const title = taskTitleInput.value.trim()
+      if (!title) {
+        alert('请输入任务标题')
+        return
+      }
+
+      const category = taskCategorySelect.value
+      const dueDate = taskDueDateInput.value || null
+
+      try {
+        const res = await fetch(`${BASE_URL}/tasks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: currentUser.id, title, category, due_date: dueDate })
+        })
+        const json = await res.json()
+        if (!json.success) {
+          alert(json.message)
+          return
+        }
+
+        taskTitleInput.value = ''
+        taskDueDateInput.value = ''
+        loadTasks()
+        loadStats()
+      } catch (error) {
+        alert('添加任务失败')
+      }
+    })
+
+    // ===== 切换任务完成状态 =====
+    window.toggleTask = async function (taskId, currentCompleted) {
+      if (!currentUser) return
+
+      try {
+        const res = await fetch(`${BASE_URL}/tasks/${taskId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: currentUser.id, completed: !currentCompleted })
+        })
+        const json = await res.json()
+        if (!json.success) {
+          alert(json.message)
+          return
+        }
+
+        loadTasks()
+        loadStats()
+      } catch (error) {
+        alert('更新任务失败')
+      }
+    }
+
+    // ===== 删除任务 =====
+    window.deleteTask = async function (taskId) {
+      if (!currentUser) return
+
+      if (!confirm('确定要删除这个任务吗？')) return
+
+      try {
+        const res = await fetch(`${BASE_URL}/tasks/${taskId}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: currentUser.id })
+        })
+        const json = await res.json()
+        if (!json.success) {
+          alert(json.message)
+          return
+        }
+
+        loadTasks()
+        loadStats()
+      } catch (error) {
+        alert('删除任务失败')
+      }
+    }
+
+    // ===== 筛选按钮 =====
+    filterBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        filterBtns.forEach(b => b.classList.remove('active'))
+        btn.classList.add('active')
+        currentFilter = btn.dataset.category
+        loadTasks()
+      })
+    })
+
+    // ===== 打卡 =====
+    checkinBtn.addEventListener('click', async () => {
+      if (!currentUser) return
+
+      try {
+        const res = await fetch(`${BASE_URL}/checkin`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: currentUser.id })
+        })
+        const json = await res.json()
+        if (!json.success) {
+          alert(json.message)
+          return
+        }
+
+        updateCheckinBtn()
+        loadStats()
+      } catch (error) {
+        alert('打卡失败')
+      }
+    })
+
+    // ===== 更新打卡按钮状态 =====
+    async function updateCheckinBtn() {
+      if (!currentUser) return
+
+      try {
+        const res = await fetch(`${BASE_URL}/stats?user_id=${currentUser.id}`)
+        const json = await res.json()
+        if (json.success) {
+          const checked = json.data.stats.todayCheckedIn
+          if (checked) {
+            checkinBtn.textContent = '✅ 已打卡'
+            checkinBtn.classList.add('checked')
+          } else {
+            checkinBtn.textContent = '📅 今日打卡'
+            checkinBtn.classList.remove('checked')
+          }
+        }
+      } catch (error) {
+        // 静默失败
+      }
+    }
+
+    // ===== 加载统计数据 =====
+    async function loadStats() {
+      if (!currentUser) return
+
+      try {
+        const res = await fetch(`${BASE_URL}/stats?user_id=${currentUser.id}`)
+        const json = await res.json()
+        if (!json.success) {
+          alert(json.message)
+          return
+        }
+
+        const stats = json.data.stats
+        document.getElementById('stat-total').textContent = stats.totalTasks
+        document.getElementById('stat-completed').textContent = stats.completedTasks
+        document.getElementById('stat-weekly').textContent = stats.weeklyCheckins
+        document.getElementById('stat-streak').textContent = stats.longestStreak
+
+        const checkinEl = document.getElementById('stat-checkin')
+        if (stats.todayCheckedIn) {
+          checkinEl.textContent = '✅ 是'
+          checkinEl.className = 'stat-value checked-yes'
+        } else {
+          checkinEl.textContent = '❌ 否'
+          checkinEl.className = 'stat-value checked-no'
+        }
+      } catch (error) {
+        alert('加载统计数据失败')
+      }
+    }
+
+    // ===== 初始化 =====
+    init()
+  </script>
+
+</body>
+</html>
