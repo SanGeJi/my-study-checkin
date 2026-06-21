@@ -1,6 +1,6 @@
 const express = require('express')
 const cors = require('cors')
-const { query, queryAll, run, getDb } = require('./database')
+const { query, queryAll, run } = require('./database')
 
 const app = express()
 
@@ -19,9 +19,15 @@ function fail(res, message = '操作失败') {
   res.json({ success: false, data: {}, message })
 }
 
+// 将 SQL 中的 ? 占位符转换为 PostgreSQL 的 $1, $2, ... 格式
+function toPg(sqlStr) {
+  let idx = 1
+  return sqlStr.replace(/\?/g, () => `$${idx++}`)
+}
+
 // 计算最长连续打卡天数
 function longestStreak(userId) {
-  const rows = queryAll('SELECT date FROM checkins WHERE user_id = ? ORDER BY date ASC', [userId])
+  const rows = queryAll('SELECT date FROM checkins WHERE user_id = $1 ORDER BY date ASC', [userId])
   if (!rows || rows.length === 0) return 0
 
   const dates = rows.map(r => r.date).sort()
@@ -47,7 +53,7 @@ function longestStreak(userId) {
 // 检查今日是否已打卡
 function todayCheckedIn(userId) {
   const today = new Date().toISOString().slice(0, 10)
-  const row = query('SELECT id FROM checkins WHERE user_id = ? AND date = ?', [userId, today])
+  const row = query('SELECT id FROM checkins WHERE user_id = $1 AND date = $2', [userId, today])
   return Boolean(row)
 }
 
@@ -60,14 +66,14 @@ function weeklyCheckins(userId) {
   monday.setDate(now.getDate() + diffToMonday)
   const mondayStr = monday.toISOString().slice(0, 10)
 
-  const rows = queryAll('SELECT date FROM checkins WHERE user_id = ? AND date >= ?', [userId, mondayStr])
+  const rows = queryAll('SELECT date FROM checkins WHERE user_id = $1 AND date >= $2', [userId, mondayStr])
   return rows.length
 }
 
 // ==================== 认证接口 ====================
 
 // POST /api/register — 用户注册
-app.post('/api/register', (req, res) => {
+app.post('/api/register', async (req, res) => {
   try {
     const { username, password } = req.body
 
@@ -76,16 +82,16 @@ app.post('/api/register', (req, res) => {
     }
 
     // 检查用户名是否已存在
-    const existingUser = query('SELECT id FROM users WHERE username = ?', [username])
+    const existingUser = await query('SELECT id FROM users WHERE username = $1', [username])
     if (existingUser) {
       return fail(res, '该用户名已被注册')
     }
 
     // 插入新用户
-    run('INSERT INTO users (username, password) VALUES (?, ?)', [username, password])
+    await run('INSERT INTO users (username, password) VALUES ($1, $2)', [username, password])
 
     // 获取刚插入的用户ID
-    const newUser = query('SELECT id, username FROM users WHERE username = ?', [username])
+    const newUser = await query('SELECT id, username FROM users WHERE username = $1', [username])
 
     success(res, { user: { id: newUser.id, username: newUser.username } }, '注册成功')
   } catch (error) {
@@ -95,7 +101,7 @@ app.post('/api/register', (req, res) => {
 })
 
 // POST /api/login — 用户登录
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body
 
@@ -104,8 +110,8 @@ app.post('/api/login', (req, res) => {
     }
 
     // 查找用户
-    const user = query(
-      'SELECT id, username FROM users WHERE username = ? AND password = ?',
+    const user = await query(
+      'SELECT id, username FROM users WHERE username = $1 AND password = $2',
       [username, password]
     )
 
@@ -123,7 +129,7 @@ app.post('/api/login', (req, res) => {
 // ==================== 任务接口 ====================
 
 // GET /api/tasks — 获取当前用户所有任务（支持按分类筛选）
-app.get('/api/tasks', (req, res) => {
+app.get('/api/tasks', async (req, res) => {
   try {
     const { user_id, category } = req.query
 
@@ -131,18 +137,18 @@ app.get('/api/tasks', (req, res) => {
       return fail(res, '缺少用户ID')
     }
 
-    let sql = 'SELECT * FROM tasks WHERE user_id = ?'
+    let sqlStr = 'SELECT * FROM tasks WHERE user_id = $1'
     const params = [user_id]
 
     // 如果指定了分类，添加筛选条件
     if (category && ['work', 'study', 'life'].includes(category)) {
-      sql += ' AND category = ?'
+      sqlStr += ' AND category = $2'
       params.push(category)
     }
 
-    sql += ' ORDER BY created_at DESC'
+    sqlStr += ' ORDER BY created_at DESC'
 
-    const rows = queryAll(sql, params)
+    const rows = await queryAll(sqlStr, params)
 
     // 将 completed 字段从 0/1 转为 boolean
     const tasks = rows.map(t => ({
@@ -158,7 +164,7 @@ app.get('/api/tasks', (req, res) => {
 })
 
 // POST /api/tasks — 创建任务
-app.post('/api/tasks', (req, res) => {
+app.post('/api/tasks', async (req, res) => {
   try {
     const { user_id, title, category, due_date } = req.body
 
@@ -172,12 +178,12 @@ app.post('/api/tasks', (req, res) => {
 
     const finalDueDate = due_date || null
 
-    run(
-      'INSERT INTO tasks (user_id, title, category, due_date) VALUES (?, ?, ?, ?)',
+    await run(
+      'INSERT INTO tasks (user_id, title, category, due_date) VALUES ($1, $2, $3, $4)',
       [user_id, title, finalCategory, finalDueDate]
     )
 
-    // 直接用输入参数构造返回数据，避免查询 last_insert_rowid 失败
+    // 直接用请求参数构造返回数据
     success(res, {
       task: {
         user_id: parseInt(user_id),
@@ -194,7 +200,7 @@ app.post('/api/tasks', (req, res) => {
 })
 
 // PUT /api/tasks/:id — 更新任务（完成状态/标题/分类/截止日期）
-app.put('/api/tasks/:id', (req, res) => {
+app.put('/api/tasks/:id', async (req, res) => {
   try {
     const { id } = req.params
     const { user_id, title, category, due_date, completed } = req.body
@@ -204,7 +210,10 @@ app.put('/api/tasks/:id', (req, res) => {
     }
 
     // 先检查任务是否存在且属于当前用户
-    const existingTask = query('SELECT * FROM tasks WHERE id = ? AND user_id = ?', [id, user_id])
+    const existingTask = await query(
+      'SELECT * FROM tasks WHERE id = $1 AND user_id = $2',
+      [id, user_id]
+    )
     if (!existingTask) {
       return fail(res, '任务不存在')
     }
@@ -226,10 +235,10 @@ app.put('/api/tasks/:id', (req, res) => {
 
     params.push(id)
 
-    run(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`, params)
+    await run(toPg(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`), params)
 
     // 查询更新后的任务
-    const updatedTask = query('SELECT * FROM tasks WHERE id = ?', [id])
+    const updatedTask = await query('SELECT * FROM tasks WHERE id = $1', [id])
 
     success(res, {
       task: { ...updatedTask, completed: Boolean(updatedTask.completed) }
@@ -241,7 +250,7 @@ app.put('/api/tasks/:id', (req, res) => {
 })
 
 // DELETE /api/tasks/:id — 删除任务
-app.delete('/api/tasks/:id', (req, res) => {
+app.delete('/api/tasks/:id', async (req, res) => {
   try {
     const { id } = req.params
     const { user_id } = req.body
@@ -251,12 +260,15 @@ app.delete('/api/tasks/:id', (req, res) => {
     }
 
     // 先检查任务是否存在且属于当前用户
-    const existingTask = query('SELECT id FROM tasks WHERE id = ? AND user_id = ?', [id, user_id])
+    const existingTask = await query(
+      'SELECT id FROM tasks WHERE id = $1 AND user_id = $2',
+      [id, user_id]
+    )
     if (!existingTask) {
       return fail(res, '任务不存在')
     }
 
-    run('DELETE FROM tasks WHERE id = ?', [id])
+    await run('DELETE FROM tasks WHERE id = $1', [id])
 
     success(res, {}, '删除成功')
   } catch (error) {
@@ -268,7 +280,7 @@ app.delete('/api/tasks/:id', (req, res) => {
 // ==================== 打卡接口 ====================
 
 // POST /api/checkin — 今日打卡
-app.post('/api/checkin', (req, res) => {
+app.post('/api/checkin', async (req, res) => {
   try {
     const { user_id } = req.body
 
@@ -279,8 +291,8 @@ app.post('/api/checkin', (req, res) => {
     const today = new Date().toISOString().slice(0, 10)
 
     // 检查今日是否已打卡
-    const existingCheckin = query(
-      'SELECT id FROM checkins WHERE user_id = ? AND date = ?',
+    const existingCheckin = await query(
+      'SELECT id FROM checkins WHERE user_id = $1 AND date = $2',
       [user_id, today]
     )
     if (existingCheckin) {
@@ -288,7 +300,7 @@ app.post('/api/checkin', (req, res) => {
     }
 
     // 插入打卡记录
-    run('INSERT INTO checkins (user_id, date) VALUES (?, ?)', [user_id, today])
+    await run('INSERT INTO checkins (user_id, date) VALUES ($1, $2)', [user_id, today])
 
     // 直接用请求参数构造返回数据
     success(
@@ -305,7 +317,7 @@ app.post('/api/checkin', (req, res) => {
 // ==================== 统计接口 ====================
 
 // GET /api/stats — 获取统计信息
-app.get('/api/stats', (req, res) => {
+app.get('/api/stats', async (req, res) => {
   try {
     const { user_id } = req.query
 
@@ -313,8 +325,8 @@ app.get('/api/stats', (req, res) => {
       return fail(res, '缺少用户ID')
     }
 
-    const total = query('SELECT COUNT(*) as count FROM tasks WHERE user_id = ?', [user_id])
-    const done = query('SELECT COUNT(*) as count FROM tasks WHERE user_id = ? AND completed = 1', [user_id])
+    const total = await query('SELECT COUNT(*) as count FROM tasks WHERE user_id = $1', [user_id])
+    const done = await query('SELECT COUNT(*) as count FROM tasks WHERE user_id = $1 AND completed = 1', [user_id])
     const todayCheck = todayCheckedIn(user_id)
     const weekly = weeklyCheckins(user_id)
     const streak = longestStreak(user_id)
@@ -337,14 +349,5 @@ app.get('/api/stats', (req, res) => {
   }
 })
 
-// ==================== 启动服务 ====================
-
-const startServer = async () => {
-  await require('./database').initDatabase()
-  const port = process.env.PORT || 3000
-  app.listen(port, () => {
-    console.log(`服务器运行在 http://localhost:${port}`)
-  })
-}
-
-startServer()
+// Vercel 不需要手动 listen，导出 app 即可
+module.exports = app
