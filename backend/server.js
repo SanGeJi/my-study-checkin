@@ -339,15 +339,16 @@ app.get('/api/stats', async (req, res) => {
 
 // ==================== 启动服务 ====================
 
-const startServer = async () => {
-  await require('./database').initDatabase()
+// 数据库初始化（Vercel 上在模块加载时触发，本地在 startServer 中 await）
+require('./database').initDatabase().catch(err => console.error('数据库初始化失败：', err))
+
+// 本地开发启动服务器，Vercel 上跳过（由平台托管）
+if (!process.env.VERCEL) {
   const port = process.env.PORT || 3000
   app.listen(port, () => {
     console.log(`服务器运行在 http://localhost:${port}`)
   })
 }
-
-startServer()
 
 // Vercel 需要导出 Express app
 module.exports = app

@@ -2,7 +2,10 @@ const initSqlJs = require('sql.js')
 const fs = require('fs')
 const path = require('path')
 
-const dbPath = path.join(__dirname, 'study_checkin.db')
+// Vercel 上只有 /tmp 可写，本地用项目目录
+const dbPath = process.env.VERCEL
+  ? '/tmp/study_checkin.db'
+  : path.join(__dirname, 'study_checkin.db')
 
 let db
 
