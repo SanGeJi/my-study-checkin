@@ -26,8 +26,8 @@ function toPg(sqlStr) {
 }
 
 // 计算最长连续打卡天数
-function longestStreak(userId) {
-  const rows = queryAll('SELECT date FROM checkins WHERE user_id = $1 ORDER BY date ASC', [userId])
+async function longestStreak(userId) {
+  const rows = await queryAll('SELECT date FROM checkins WHERE user_id = $1 ORDER BY date ASC', [userId])
   if (!rows || rows.length === 0) return 0
 
   const dates = rows.map(r => r.date).sort()
@@ -51,14 +51,14 @@ function longestStreak(userId) {
 }
 
 // 检查今日是否已打卡
-function todayCheckedIn(userId) {
+async function todayCheckedIn(userId) {
   const today = new Date().toISOString().slice(0, 10)
-  const row = query('SELECT id FROM checkins WHERE user_id = $1 AND date = $2', [userId, today])
+  const row = await query('SELECT id FROM checkins WHERE user_id = $1 AND date = $2', [userId, today])
   return Boolean(row)
 }
 
 // 计算本周打卡次数
-function weeklyCheckins(userId) {
+async function weeklyCheckins(userId) {
   const now = new Date()
   const dayOfWeek = now.getDay() // 0=周日, 1=周一, ...
   const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
@@ -66,7 +66,7 @@ function weeklyCheckins(userId) {
   monday.setDate(now.getDate() + diffToMonday)
   const mondayStr = monday.toISOString().slice(0, 10)
 
-  const rows = queryAll('SELECT date FROM checkins WHERE user_id = $1 AND date >= $2', [userId, mondayStr])
+  const rows = await queryAll('SELECT date FROM checkins WHERE user_id = $1 AND date >= $2', [userId, mondayStr])
   return rows.length
 }
 
