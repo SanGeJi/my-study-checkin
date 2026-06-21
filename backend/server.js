@@ -348,3 +348,6 @@ const startServer = async () => {
 }
 
 startServer()
+
+// Vercel 需要导出 Express app
+module.exports = app
