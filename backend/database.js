@@ -58,26 +58,25 @@ function getPool() {
   const conn = findEnvVar(POOLED_ENV_NAMES) || findEnvVar(CLIENT_ENV_NAMES)
   if (!conn) throw missingConnectionStringError()
 
-  // 默认用 createPool，如果 URL 实际上是非连接池格式，execute() 会自动降级
-  pool = createPool({ connectionString: conn.value })
-  usingClient = false
+  // 先尝试 createPool，如果 URL 是非连接池格式则同步抛错，降级到 createClient
+  try {
+    pool = createPool({ connectionString: conn.value })
+    usingClient = false
+  } catch (error) {
+    const message = error && error.message ? String(error.message) : ''
+    if (message.includes('direct connection') || message.includes('non-pooled connection')) {
+      pool = createClient({ connectionString: conn.value })
+      usingClient = true
+    } else {
+      throw error
+    }
+  }
+
   return pool
 }
 
 async function execute(sqlText, params = []) {
-  try {
-    return await getPool().query(sqlText, params)
-  } catch (error) {
-    // createPool 遇到非连接池 URL 时自动降级到 createClient
-    const message = error && error.message ? String(error.message) : ''
-    if ((message.includes('direct connection') || message.includes('non-pooled connection')) && !usingClient) {
-      const conn = findEnvVar(POOLED_ENV_NAMES) || findEnvVar(CLIENT_ENV_NAMES)
-      pool = createClient({ connectionString: conn.value })
-      usingClient = true
-      return await pool.query(sqlText, params)
-    }
-    throw error
-  }
+  return getPool().query(sqlText, params)
 }
 
 async function initDatabase() {
