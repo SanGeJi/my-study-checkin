@@ -1,6 +1,13 @@
 const express = require('express')
 const cors = require('cors')
-const { initDatabase, query, queryAll, run } = require('./database')
+const {
+  initDatabase,
+  query,
+  queryAll,
+  run,
+  databaseEnvStatus,
+  describeDatabaseError
+} = require('./database')
 
 const app = express()
 const api = express.Router()
@@ -12,8 +19,19 @@ function success(res, data = {}, message = '') {
   res.json({ success: true, data, message })
 }
 
-function fail(res, message = '操作失败', status = 200) {
-  res.status(status).json({ success: false, data: {}, message })
+function fail(res, message = 'Operation failed', status = 200, data = {}) {
+  res.status(status).json({ success: false, data, message })
+}
+
+function failWithDatabaseError(res, error, actionMessage, status = 200) {
+  const databaseError = describeDatabaseError(error)
+  console.error(`${actionMessage}:`, error)
+  fail(res, `${actionMessage}: ${databaseError.message}`, status, {
+    database: {
+      ...databaseEnvStatus(),
+      error: databaseError
+    }
+  })
 }
 
 function toUserId(value) {
@@ -79,10 +97,15 @@ async function weeklyCheckins(userId) {
 api.get('/health', async (req, res) => {
   try {
     await initDatabase()
-    success(res, { ok: true }, 'OK')
+    success(res, {
+      ok: true,
+      database: {
+        ...databaseEnvStatus(),
+        connected: true
+      }
+    }, 'OK')
   } catch (error) {
-    console.error('health check error:', error)
-    fail(res, '数据库连接失败', 500)
+    failWithDatabaseError(res, error, 'Database health check failed', 500)
   }
 })
 
@@ -91,7 +114,7 @@ api.post('/register', async (req, res) => {
     const { username, password } = req.body
 
     if (!username || !password) {
-      return fail(res, '用户名和密码不能为空')
+      return fail(res, 'Username and password are required')
     }
 
     const existingUser = await query(
@@ -99,7 +122,7 @@ api.post('/register', async (req, res) => {
       [username]
     )
     if (existingUser) {
-      return fail(res, '该用户名已被注册')
+      return fail(res, 'Username is already registered')
     }
 
     const createdUser = await query(
@@ -107,10 +130,9 @@ api.post('/register', async (req, res) => {
       [username, password]
     )
 
-    success(res, { user: createdUser }, '注册成功')
+    success(res, { user: createdUser }, 'Register successful')
   } catch (error) {
-    console.error('register error:', error)
-    fail(res, '注册失败')
+    failWithDatabaseError(res, error, 'Register failed')
   }
 })
 
@@ -119,7 +141,7 @@ api.post('/login', async (req, res) => {
     const { username, password } = req.body
 
     if (!username || !password) {
-      return fail(res, '用户名和密码不能为空')
+      return fail(res, 'Username and password are required')
     }
 
     const user = await query(
@@ -128,13 +150,12 @@ api.post('/login', async (req, res) => {
     )
 
     if (!user) {
-      return fail(res, '用户名或密码错误')
+      return fail(res, 'Username or password is incorrect')
     }
 
-    success(res, { user }, '登录成功')
+    success(res, { user }, 'Login successful')
   } catch (error) {
-    console.error('login error:', error)
-    fail(res, '登录失败')
+    failWithDatabaseError(res, error, 'Login failed')
   }
 })
 
@@ -144,7 +165,7 @@ api.get('/tasks', async (req, res) => {
     const { category } = req.query
 
     if (!userId) {
-      return fail(res, '缺少用户ID')
+      return fail(res, 'Missing user_id')
     }
 
     const params = [userId]
@@ -158,10 +179,9 @@ api.get('/tasks', async (req, res) => {
     sqlText += ' ORDER BY created_at DESC'
 
     const tasks = await queryAll(sqlText, params)
-    success(res, { tasks }, '获取成功')
+    success(res, { tasks }, 'Tasks loaded')
   } catch (error) {
-    console.error('list tasks error:', error)
-    fail(res, '获取任务列表失败')
+    failWithDatabaseError(res, error, 'Load tasks failed')
   }
 })
 
@@ -171,7 +191,7 @@ api.post('/tasks', async (req, res) => {
     const { title, category, due_date: dueDate } = req.body
 
     if (!userId || !title) {
-      return fail(res, '用户ID和任务标题不能为空')
+      return fail(res, 'User id and task title are required')
     }
 
     const finalCategory = ['work', 'study', 'life'].includes(category) ? category : 'work'
@@ -184,10 +204,9 @@ api.post('/tasks', async (req, res) => {
       [userId, title, finalCategory, finalDueDate]
     )
 
-    success(res, { task }, '创建成功')
+    success(res, { task }, 'Task created')
   } catch (error) {
-    console.error('create task error:', error)
-    fail(res, '创建任务失败')
+    failWithDatabaseError(res, error, 'Create task failed')
   }
 })
 
@@ -198,7 +217,7 @@ api.put('/tasks/:id', async (req, res) => {
     const { title, category, due_date: dueDate, completed } = req.body
 
     if (!taskId || !userId) {
-      return fail(res, '缺少任务ID或用户ID')
+      return fail(res, 'Missing task id or user id')
     }
 
     const updates = []
@@ -222,7 +241,7 @@ api.put('/tasks/:id', async (req, res) => {
     }
 
     if (!updates.length) {
-      return fail(res, '没有要更新的字段')
+      return fail(res, 'No fields to update')
     }
 
     params.push(taskId)
@@ -239,13 +258,12 @@ api.put('/tasks/:id', async (req, res) => {
     )
 
     if (!task) {
-      return fail(res, '任务不存在')
+      return fail(res, 'Task not found')
     }
 
-    success(res, { task }, '更新成功')
+    success(res, { task }, 'Task updated')
   } catch (error) {
-    console.error('update task error:', error)
-    fail(res, '更新任务失败')
+    failWithDatabaseError(res, error, 'Update task failed')
   }
 })
 
@@ -255,7 +273,7 @@ api.delete('/tasks/:id', async (req, res) => {
     const userId = toUserId(req.body.user_id)
 
     if (!taskId || !userId) {
-      return fail(res, '缺少任务ID或用户ID')
+      return fail(res, 'Missing task id or user id')
     }
 
     const result = await run(
@@ -264,13 +282,12 @@ api.delete('/tasks/:id', async (req, res) => {
     )
 
     if (!result.rowCount) {
-      return fail(res, '任务不存在')
+      return fail(res, 'Task not found')
     }
 
-    success(res, {}, '删除成功')
+    success(res, {}, 'Task deleted')
   } catch (error) {
-    console.error('delete task error:', error)
-    fail(res, '删除任务失败')
+    failWithDatabaseError(res, error, 'Delete task failed')
   }
 })
 
@@ -279,7 +296,7 @@ api.post('/checkin', async (req, res) => {
     const userId = toUserId(req.body.user_id)
 
     if (!userId) {
-      return fail(res, '缺少用户ID')
+      return fail(res, 'Missing user_id')
     }
 
     const today = todayInShanghai()
@@ -289,7 +306,7 @@ api.post('/checkin', async (req, res) => {
     )
 
     if (existingCheckin) {
-      return fail(res, '今日已打卡')
+      return fail(res, 'Already checked in today')
     }
 
     const checkin = await query(
@@ -297,10 +314,9 @@ api.post('/checkin', async (req, res) => {
       [userId, today]
     )
 
-    success(res, { checkin }, '打卡成功')
+    success(res, { checkin }, 'Check-in successful')
   } catch (error) {
-    console.error('checkin error:', error)
-    fail(res, '打卡失败')
+    failWithDatabaseError(res, error, 'Check-in failed')
   }
 })
 
@@ -309,7 +325,7 @@ api.get('/stats', async (req, res) => {
     const userId = toUserId(req.query.user_id)
 
     if (!userId) {
-      return fail(res, '缺少用户ID')
+      return fail(res, 'Missing user_id')
     }
 
     const total = await query('SELECT COUNT(*) AS count FROM tasks WHERE user_id = $1', [userId])
@@ -328,8 +344,7 @@ api.get('/stats', async (req, res) => {
       }
     })
   } catch (error) {
-    console.error('stats error:', error)
-    fail(res, '获取统计信息失败')
+    failWithDatabaseError(res, error, 'Load stats failed')
   }
 })
 
@@ -345,7 +360,7 @@ if (!process.env.VERCEL) {
       })
     })
     .catch(error => {
-      console.error('database init error:', error)
+      console.error('Database init error:', error)
       process.exit(1)
     })
 }

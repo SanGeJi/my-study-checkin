@@ -1,22 +1,47 @@
 const { createPool } = require('@vercel/postgres')
 
+const DATABASE_ENV_NAMES = [
+  'POSTGRES_URL',
+  'DATABASE_URL',
+  'POSTGRES_PRISMA_URL',
+  'POSTGRES_URL_NON_POOLING'
+]
+
 let pool
 let initPromise
 
+function getConfiguredDatabaseEnv() {
+  return DATABASE_ENV_NAMES.find(name => process.env[name])
+}
+
 function getConnectionString() {
-  return (
-    process.env.POSTGRES_URL ||
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_PRISMA_URL ||
-    process.env.POSTGRES_URL_NON_POOLING
-  )
+  const envName = getConfiguredDatabaseEnv()
+  return envName ? process.env[envName] : null
+}
+
+function databaseEnvStatus() {
+  const envName = getConfiguredDatabaseEnv()
+  return {
+    configured: Boolean(envName),
+    variable: envName || null
+  }
+}
+
+function missingConnectionStringError() {
+  const error = new Error('Missing POSTGRES_URL or DATABASE_URL in Vercel environment variables')
+  error.code = 'missing_connection_string'
+  return error
 }
 
 function getPool() {
   if (pool) return pool
 
   const connectionString = getConnectionString()
-  pool = connectionString ? createPool({ connectionString }) : createPool()
+  if (!connectionString) {
+    throw missingConnectionStringError()
+  }
+
+  pool = createPool({ connectionString })
   return pool
 }
 
@@ -86,9 +111,50 @@ async function run(sqlText, params = []) {
   return { rowCount: result.rowCount, rows: result.rows }
 }
 
+function describeDatabaseError(error) {
+  const rawCode = error && (error.code || error.name)
+  const code = rawCode ? String(rawCode) : 'unknown_database_error'
+  const message = error && error.message ? String(error.message) : ''
+
+  if (code === 'missing_connection_string' || message.includes('missing_connection_string')) {
+    return {
+      code: 'missing_connection_string',
+      message: 'Missing POSTGRES_URL or DATABASE_URL in Vercel environment variables.'
+    }
+  }
+
+  if (message.includes('password authentication failed')) {
+    return {
+      code: 'authentication_failed',
+      message: 'Database authentication failed. Check the Neon password in your Vercel environment variable.'
+    }
+  }
+
+  if (message.includes('ENOTFOUND') || message.includes('getaddrinfo')) {
+    return {
+      code: 'database_host_not_found',
+      message: 'Database host was not found. Check the Neon connection string host.'
+    }
+  }
+
+  if (message.includes('This connection string is meant to be used with a non-pooled connection')) {
+    return {
+      code: 'non_pooled_connection_string',
+      message: 'The configured URL is non-pooled. Use the pooled Neon URL for POSTGRES_URL, or set DATABASE_URL to a pooled URL.'
+    }
+  }
+
+  return {
+    code,
+    message: message ? `Database error: ${message}` : 'Unknown database error.'
+  }
+}
+
 module.exports = {
   initDatabase: ensureDatabase,
   run,
   query,
-  queryAll
+  queryAll,
+  databaseEnvStatus,
+  describeDatabaseError
 }
