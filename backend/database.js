@@ -1,101 +1,93 @@
-const initSqlJs = require('sql.js')
-const fs = require('fs')
-const path = require('path')
+const { createPool } = require('@vercel/postgres')
 
-// Vercel 上只有 /tmp 可写，本地用项目目录
-const dbPath = process.env.VERCEL
-  ? '/tmp/study_checkin.db'
-  : path.join(__dirname, 'study_checkin.db')
+let pool
+let initPromise
 
-let db
+function getConnectionString() {
+  return (
+    process.env.POSTGRES_URL ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.POSTGRES_URL_NON_POOLING
+  )
+}
 
-// 初始化 sql.js 数据库（从文件加载或新建）
+function getPool() {
+  if (pool) return pool
+
+  const connectionString = getConnectionString()
+  pool = connectionString ? createPool({ connectionString }) : createPool()
+  return pool
+}
+
+async function execute(sqlText, params = []) {
+  return getPool().query(sqlText, params)
+}
+
 async function initDatabase() {
-  const SQL = await initSqlJs()
+  await execute(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE,
+      password TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
 
-  if (fs.existsSync(dbPath)) {
-    const fileBuffer = fs.readFileSync(dbPath)
-    db = new SQL.Database(fileBuffer)
-  } else {
-    db = new SQL.Database()
+  await execute(`
+    CREATE TABLE IF NOT EXISTS tasks (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'work',
+      due_date DATE,
+      completed BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+
+  await execute(`
+    CREATE TABLE IF NOT EXISTS checkins (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      date DATE NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(user_id, date)
+    )
+  `)
+}
+
+async function ensureDatabase() {
+  if (!initPromise) {
+    initPromise = initDatabase().catch(error => {
+      initPromise = null
+      throw error
+    })
   }
 
-  // 创建 users 表
-  db.run(`CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL UNIQUE,
-    password TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`)
-
-  // 创建 tasks 表
-  db.run(`CREATE TABLE IF NOT EXISTS tasks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    title TEXT NOT NULL,
-    category TEXT NOT NULL DEFAULT 'work',
-    due_date TEXT,
-    completed INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  )`)
-
-  // 创建 checkins 表
-  db.run(`CREATE TABLE IF NOT EXISTS checkins (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    date TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (user_id) REFERENCES users(id),
-    UNIQUE(user_id, date)
-  )`)
-
-  saveDatabase()
+  return initPromise
 }
 
-// 保存数据库到磁盘
-function saveDatabase() {
-  const data = db.export()
-  const buffer = Buffer.from(data)
-  fs.writeFileSync(dbPath, buffer)
+async function query(sqlText, params = []) {
+  await ensureDatabase()
+  const result = await execute(sqlText, params)
+  return result.rows[0] || null
 }
 
-// 执行 INSERT/UPDATE/DELETE 并保存
-function run(sql, params = []) {
-  db.run(sql, params)
-  const lastIdResult = db.exec('SELECT last_insert_rowid() as id')
-  const lastInsertRowid = lastIdResult[0]?.values[0][0] || null
-  saveDatabase()
-  return { changes: db.getRowsModified(), lastInsertRowid }
+async function queryAll(sqlText, params = []) {
+  await ensureDatabase()
+  const result = await execute(sqlText, params)
+  return result.rows
 }
 
-// 查询单行
-function query(sql, params = []) {
-  const stmt = db.prepare(sql)
-  stmt.bind(params)
-  if (stmt.step()) {
-    const row = stmt.getAsObject()
-    stmt.free()
-    return row
-  }
-  stmt.free()
-  return null
-}
-
-// 查询多行
-function queryAll(sql, params = []) {
-  const rows = []
-  const stmt = db.prepare(sql)
-  stmt.bind(params)
-  while (stmt.step()) {
-    rows.push(stmt.getAsObject())
-  }
-  stmt.free()
-  return rows
+async function run(sqlText, params = []) {
+  await ensureDatabase()
+  const result = await execute(sqlText, params)
+  return { rowCount: result.rowCount, rows: result.rows }
 }
 
 module.exports = {
-  initDatabase,
+  initDatabase: ensureDatabase,
   run,
   query,
   queryAll

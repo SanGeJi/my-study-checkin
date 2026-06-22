@@ -1,20 +1,22 @@
 {
-  "name": "project2",
+  "name": "my-study-checkin",
   "version": "1.0.0",
-  "description": "个人学习打卡系统",
-  "main": "index.js",
+  "description": "Personal study check-in app",
+  "main": "backend/server.js",
   "scripts": {
     "start": "node backend/server.js",
     "dev": "vercel dev",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "node -e \"console.log('No build step needed for static HTML')\"",
+    "check": "node --check backend/server.js && node --check backend/database.js && node --check api/index.js && node --check \"api/[...path].js\"",
+    "test": "npm run check"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@vercel/postgres": "^0.9.0",
     "cors": "^2.8.6",
-    "express": "^5.2.1",
-    "sql.js": "^1.14.1"
+    "express": "^5.2.1"
   }
 }
