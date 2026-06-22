@@ -1,17 +1,34 @@
-const { createPool } = require('@vercel/postgres')
+const { createPool, createClient } = require('@vercel/postgres')
 
-const DATABASE_ENV_NAMES = [
+// 连接池 URL（适用于 createPool）
+const POOLED_ENV_NAMES = [
   'POSTGRES_URL',
   'DATABASE_URL',
-  'POSTGRES_PRISMA_URL',
+  'POSTGRES_PRISMA_URL'
+]
+
+// 非连接池 URL（直接连接，适用于 createClient）
+const CLIENT_ENV_NAMES = [
   'POSTGRES_URL_NON_POOLING'
 ]
 
 let pool
 let initPromise
+let usingClient = false
+
+function findEnvVar(envNames) {
+  const name = envNames.find(n => process.env[n])
+  return name ? { name, value: process.env[name] } : null
+}
 
 function getConfiguredDatabaseEnv() {
-  return DATABASE_ENV_NAMES.find(name => process.env[name])
+  const pooled = findEnvVar(POOLED_ENV_NAMES)
+  if (pooled) return pooled.name
+
+  const client = findEnvVar(CLIENT_ENV_NAMES)
+  if (client) return client.name
+
+  return null
 }
 
 function getConnectionString() {
@@ -23,7 +40,8 @@ function databaseEnvStatus() {
   const envName = getConfiguredDatabaseEnv()
   return {
     configured: Boolean(envName),
-    variable: envName || null
+    variable: envName || null,
+    mode: usingClient ? 'client' : 'pool'
   }
 }
 
@@ -36,13 +54,23 @@ function missingConnectionStringError() {
 function getPool() {
   if (pool) return pool
 
-  const connectionString = getConnectionString()
-  if (!connectionString) {
-    throw missingConnectionStringError()
+  // 优先使用连接池 URL → createPool
+  const pooledConn = findEnvVar(POOLED_ENV_NAMES)
+  if (pooledConn) {
+    pool = createPool({ connectionString: pooledConn.value })
+    usingClient = false
+    return pool
   }
 
-  pool = createPool({ connectionString })
-  return pool
+  // 备用：非连接池 URL → createClient（serverless 每次调用独立连接，无需持久池）
+  const clientConn = findEnvVar(CLIENT_ENV_NAMES)
+  if (clientConn) {
+    pool = createClient({ connectionString: clientConn.value })
+    usingClient = true
+    return pool
+  }
+
+  throw missingConnectionStringError()
 }
 
 async function execute(sqlText, params = []) {
@@ -137,10 +165,10 @@ function describeDatabaseError(error) {
     }
   }
 
-  if (message.includes('This connection string is meant to be used with a non-pooled connection')) {
+  if (message.includes('direct connection') || message.includes('non-pooled connection')) {
     return {
       code: 'non_pooled_connection_string',
-      message: 'The configured URL is non-pooled. Use the pooled Neon URL for POSTGRES_URL, or set DATABASE_URL to a pooled URL.'
+      message: '当前配置的是非连接池 URL（直接连接）。请在 Vercel 环境变量中使用 Neon 的连接池 URL（POSTGRES_URL），或确保 POSTGRES_URL_NON_POOLING 以外的变量设置为连接池格式。'
     }
   }
 
