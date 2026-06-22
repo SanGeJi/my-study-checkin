@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node backend/server.js",
     "dev": "vercel dev",
-    "build": "node -e \"console.log('No build step needed for static HTML')\"",
+    "build": "node scripts/build.js",
     "check": "node --check backend/server.js && node --check backend/database.js && node --check api/index.js && node --check \"api/[...path].js\"",
     "test": "npm run check"
   },
