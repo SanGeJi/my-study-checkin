@@ -1,4 +1,5 @@
-const { createPool, createClient } = require('@vercel/postgres')
+const { createPool } = require('@vercel/postgres')
+const { Pool } = require('@neondatabase/serverless')
 
 // 连接池 URL（适用于 createPool）
 const POOLED_ENV_NAMES = [
@@ -7,7 +8,7 @@ const POOLED_ENV_NAMES = [
   'POSTGRES_PRISMA_URL'
 ]
 
-// 非连接池 URL（直接连接，适用于 createClient）
+// 非连接池 URL（直接连接）
 const CLIENT_ENV_NAMES = [
   'POSTGRES_URL_NON_POOLING'
 ]
@@ -58,21 +59,22 @@ function getPool() {
   const conn = findEnvVar(POOLED_ENV_NAMES) || findEnvVar(CLIENT_ENV_NAMES)
   if (!conn) throw missingConnectionStringError()
 
-  // 先尝试 createPool，如果 URL 是非连接池格式则同步抛错，降级到 createClient
+  // 先尝试 @vercel/postgres 的 createPool（校验 URL 是否含 -pooler.）
   try {
     pool = createPool({ connectionString: conn.value })
     usingClient = false
+    return pool
   } catch (error) {
     const message = error && error.message ? String(error.message) : ''
     if (message.includes('direct connection') || message.includes('non-pooled connection')) {
-      pool = createClient({ connectionString: conn.value })
+      // createPool 拒绝非连接池 URL → 降级到 @neondatabase/serverless 原生 Pool
+      // 原生 Pool 不校验 URL 格式，且自动连接，兼容所有类型
+      pool = new Pool({ connectionString: conn.value })
       usingClient = true
-    } else {
-      throw error
+      return pool
     }
+    throw error
   }
-
-  return pool
 }
 
 async function execute(sqlText, params = []) {
