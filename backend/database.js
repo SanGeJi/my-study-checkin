@@ -54,27 +54,30 @@ function missingConnectionStringError() {
 function getPool() {
   if (pool) return pool
 
-  // 优先使用连接池 URL → createPool
-  const pooledConn = findEnvVar(POOLED_ENV_NAMES)
-  if (pooledConn) {
-    pool = createPool({ connectionString: pooledConn.value })
-    usingClient = false
-    return pool
-  }
+  // 按优先级查找第一个可用的连接字符串
+  const conn = findEnvVar(POOLED_ENV_NAMES) || findEnvVar(CLIENT_ENV_NAMES)
+  if (!conn) throw missingConnectionStringError()
 
-  // 备用：非连接池 URL → createClient（serverless 每次调用独立连接，无需持久池）
-  const clientConn = findEnvVar(CLIENT_ENV_NAMES)
-  if (clientConn) {
-    pool = createClient({ connectionString: clientConn.value })
-    usingClient = true
-    return pool
-  }
-
-  throw missingConnectionStringError()
+  // 默认用 createPool，如果 URL 实际上是非连接池格式，execute() 会自动降级
+  pool = createPool({ connectionString: conn.value })
+  usingClient = false
+  return pool
 }
 
 async function execute(sqlText, params = []) {
-  return getPool().query(sqlText, params)
+  try {
+    return await getPool().query(sqlText, params)
+  } catch (error) {
+    // createPool 遇到非连接池 URL 时自动降级到 createClient
+    const message = error && error.message ? String(error.message) : ''
+    if ((message.includes('direct connection') || message.includes('non-pooled connection')) && !usingClient) {
+      const conn = findEnvVar(POOLED_ENV_NAMES) || findEnvVar(CLIENT_ENV_NAMES)
+      pool = createClient({ connectionString: conn.value })
+      usingClient = true
+      return await pool.query(sqlText, params)
+    }
+    throw error
+  }
 }
 
 async function initDatabase() {
